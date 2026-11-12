@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -48,6 +48,12 @@ export default function MediaDetailScreen() {
   const [downloadTargetEp, setDownloadTargetEp] = useState<Episode | null>(null);
   const [playlistModal, setPlaylistModal] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
+
+  useEffect(() => {
+    if (media?.seasons?.length) {
+      setSelectedSeason(media.seasons[0]);
+    }
+  }, [media?.id]);
 
   const seasonEpisodes = useMemo(() => {
     if (selectedSeason === 'MOVIES') {
