@@ -103,14 +103,14 @@ export default function SearchScreen() {
 
       // Category filter
       if (category === 'MOVIES') {
-        const hasMovies = (m.movies && m.movies.length > 0) || m.format === 'FILME';
+        const hasMovies = (m.movies && m.movies.length > 0) || m.format === 'MOVIE';
         if (!hasMovies) return false;
       } else if (category === 'SERIES') {
-        if (m.format === 'FILME' && (!m.episodes || m.episodes.length <= 1)) return false;
+        if (m.format === 'MOVIE' && (!m.episodes || m.episodes.length <= 1)) return false;
       } else if (category === 'AIRING') {
-        if (m.status !== 'AIRING') return false;
+        if (m.status !== 'RELEASING') return false;
       } else if (category === 'DUBLADO') {
-        if (m.audioType !== 'DUBLADO' && m.audioType !== 'AMBOS') return false;
+        if (m.audioType !== 'DUBLADO' && m.audioType !== 'DUAL_AUDIO') return false;
       }
 
       // Genre filter
@@ -455,18 +455,18 @@ export default function SearchScreen() {
                   <Text style={[styles.optText, !status && styles.optTextActive]}>Todos</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.optBtn, status === 'AIRING' && styles.optBtnActive]}
-                  onPress={() => setStatus('AIRING')}
+                  style={[styles.optBtn, status === 'RELEASING' && styles.optBtnActive]}
+                  onPress={() => setStatus('RELEASING')}
                 >
-                  <Text style={[styles.optText, status === 'AIRING' && styles.optTextActive]}>
+                  <Text style={[styles.optText, status === 'RELEASING' && styles.optTextActive]}>
                     Em Lançamento
                   </Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.optBtn, status === 'COMPLETED' && styles.optBtnActive]}
-                  onPress={() => setStatus('COMPLETED')}
+                  style={[styles.optBtn, status === 'FINISHED' && styles.optBtnActive]}
+                  onPress={() => setStatus('FINISHED')}
                 >
-                  <Text style={[styles.optText, status === 'COMPLETED' && styles.optTextActive]}>
+                  <Text style={[styles.optText, status === 'FINISHED' && styles.optTextActive]}>
                     Finalizado
                   </Text>
                 </Pressable>
