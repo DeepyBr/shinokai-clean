@@ -303642,6 +303642,8 @@ export const INITIAL_USER: UserProfile = {
   ],
 };
 
+export const DEFAULT_USER_PROFILE: UserProfile = INITIAL_USER;
+
 export const INITIAL_COMMENTS: CommentItem[] = [
   {
     id: "c-1",

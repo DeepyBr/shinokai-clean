@@ -143,9 +143,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [comments, setComments] = useState<CommentItem[]>(INITIAL_COMMENTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [friends, setFriends] = useState<FriendUser[]>(INITIAL_FRIENDS);
-  const [user, setUser] = useState<UserProfile>(DEFAULT_USER_PROFILE);
+  const [user, setUser] = useState<UserProfile>(DEFAULT_USER_PROFILE || ({} as UserProfile));
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [playlists, setPlaylists] = useState<Playlist[]>(DEFAULT_USER_PROFILE.playlists);
+  const [playlists, setPlaylists] = useState<Playlist[]>(DEFAULT_USER_PROFILE?.playlists || []);
   const [userRatings, setUserRatings] = useState<Record<string, number>>({
     'solo-leveling': 5,
     'demon-slayer': 5,

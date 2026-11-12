@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
@@ -23,7 +24,11 @@ export default function RootLayout() {
   }, [loaded, error]);
 
   if (!loaded && !error) {
-    return null;
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
   }
 
   return (
