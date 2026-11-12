@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../src/context/AppContext';
 import { Colors, Fonts } from '../../src/theme/colors';
 
-type LibraryTab = 'DOWNLOADS' | 'FAVORITES' | 'HISTORY';
+type LibraryTab = 'DOWNLOADS' | 'FAVORITES' | 'PLAYLISTS' | 'HISTORY';
 
 export default function LibraryScreen() {
   const router = useRouter();
@@ -22,6 +22,9 @@ export default function LibraryScreen() {
     favorites,
     continueWatching,
     downloads,
+    playlists,
+    getMediaById,
+    deletePlaylist,
     toggleFavorite,
     removeDownload,
     togglePauseDownload,
@@ -47,7 +50,8 @@ export default function LibraryScreen() {
         <View style={styles.tabsRow}>
           {[
             { key: 'DOWNLOADS', label: `Downloads (${downloads.length})` },
-            { key: 'FAVORITES', label: `Minha Lista (${favoriteMedias.length})` },
+            { key: 'FAVORITES', label: `Favoritos (${favoriteMedias.length})` },
+            { key: 'PLAYLISTS', label: `Playlists (${playlists.length})` },
             { key: 'HISTORY', label: `Histórico (${continueWatching.length})` },
           ].map((t) => {
             const active = tab === t.key;
@@ -191,6 +195,62 @@ export default function LibraryScreen() {
               </Pressable>
             </Pressable>
           )}
+        />
+      )}
+
+      {tab === 'PLAYLISTS' && (
+        <FlatList
+          data={playlists}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyBox}>
+              <Ionicons name="folder-outline" size={46} color={Colors.textMuted} />
+              <Text style={styles.emptyTitle}>Nenhuma playlist criada</Text>
+              <Text style={styles.emptySub}>
+                Crie playlists no seu Perfil ou adicione animes diretamente na página de detalhes.
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const previewMedia = item.mediaIds.length > 0 ? getMediaById(item.mediaIds[0]) : null;
+            return (
+              <View style={styles.dlCard}>
+                {previewMedia ? (
+                  <Image source={{ uri: previewMedia.posterUrl }} style={styles.favPoster} />
+                ) : (
+                  <View
+                    style={[
+                      styles.favPoster,
+                      {
+                        backgroundColor: Colors.surfaceElevated,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      },
+                    ]}
+                  >
+                    <Ionicons name="folder-outline" size={28} color={Colors.primaryAccent} />
+                  </View>
+                )}
+                <View style={styles.dlInfo}>
+                  <Text style={styles.dlTitle}>{item.name}</Text>
+                  <Text style={styles.dlSub}>
+                    {item.mediaIds.length} {item.mediaIds.length === 1 ? 'anime salvo' : 'animes salvos'}
+                  </Text>
+                  <Text style={styles.favGenres} numberOfLines={1}>
+                    {item.description || 'Playlist de animes'}
+                  </Text>
+                </View>
+                <Pressable
+                  style={styles.actionIcon}
+                  onPress={() => deletePlaylist(item.id)}
+                  hitSlop={8}
+                >
+                  <Ionicons name="trash-outline" size={20} color={Colors.danger} />
+                </Pressable>
+              </View>
+            );
+          }}
         />
       )}
 

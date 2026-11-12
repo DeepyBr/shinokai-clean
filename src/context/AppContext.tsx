@@ -11,6 +11,7 @@ import {
   FriendUser,
   Media,
   NotificationItem,
+  Playlist,
   UserProfile,
 } from '../types';
 import {
@@ -33,6 +34,7 @@ const STORAGE_KEYS = {
   SETTINGS: '@shinokai/settings',
   USER: '@shinokai/user',
   RATINGS: '@shinokai/ratings',
+  PLAYLISTS: '@shinokai/playlists',
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -44,6 +46,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   pushNotifications: true,
   episodeReleaseAlerts: true,
   commentReplyAlerts: true,
+  cloudSyncEnabled: true,
 };
 
 interface AppContextValue {
@@ -60,6 +63,7 @@ interface AppContextValue {
   user: UserProfile;
   settings: AppSettings;
   userRatings: Record<string, number>;
+  playlists: Playlist[];
   unreadNotificationsCount: number;
 
   toggleFavorite: (mediaId: string) => void;
@@ -88,9 +92,16 @@ interface AppContextValue {
   removeFriendOrRequest: (friendId: string) => void;
   sendFriendRequest: (username: string) => void;
 
+  // Playlists
+  createPlaylist: (name: string, description: string) => void;
+  deletePlaylist: (playlistId: string) => void;
+  addMediaToPlaylist: (playlistId: string, mediaId: string) => void;
+  removeMediaFromPlaylist: (playlistId: string, mediaId: string) => void;
+
   updateUserProfile: (patch: Partial<UserProfile>) => void;
   signInWithGoogle: () => void;
   signInAnonymously: () => void;
+  syncWithGoogle: () => Promise<boolean>;
   signOut: () => void;
   connectTvWithCode: (code: string) => Promise<{ ok: boolean; deviceName: string }>;
   disconnectTv: () => void;
@@ -105,21 +116,20 @@ const AppContext = createContext<AppContextValue | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [medias, setMedias] = useState<Media[]>(INITIAL_MEDIAS);
   const [calendar, setCalendar] = useState<CalendarReleaseItem[]>(INITIAL_CALENDAR);
-  const [favorites, setFavorites] = useState<string[]>(['solo-leveling-s2', 'frieren-beyond']);
+  const [favorites, setFavorites] = useState<string[]>(['solo-leveling', 'demon-slayer', 'frieren']);
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>(INITIAL_CONTINUE_WATCHING);
   const [watchedEpisodes, setWatchedEpisodes] = useState<string[]>([
-    'solo-leveling-s2-ep-1',
-    'solo-leveling-s2-ep-2',
-    'solo-leveling-s2-ep-3',
-    'dandadan-tv-ep-1',
+    'solo-leveling-s1-ep1',
+    'solo-leveling-s1-ep2',
+    'demon-slayer-s1-ep1',
   ]);
   const [downloads, setDownloads] = useState<DownloadItem[]>([
     {
-      episodeId: 'solo-leveling-s2-ep-1',
-      mediaId: 'solo-leveling-s2',
-      mediaTitle: 'Solo Leveling: Arise from the Shadow',
+      episodeId: 'solo-leveling-s1-ep1',
+      mediaId: 'solo-leveling',
+      mediaTitle: 'Solo Leveling',
       episodeNumber: 1,
-      episodeTitle: 'Episódio 1 — O Despertar da Jornada',
+      episodeTitle: 'Temporada 1 • Episódio 1 — A Batalha Decisiva',
       thumbnail: INITIAL_MEDIAS[0].bannerUrl,
       quality: '1080p',
       sizeMb: 312,
@@ -129,21 +139,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       downloadedAt: 'Hoje',
     },
   ]);
-  const [reminders, setReminders] = useState<string[]>(['solo-leveling-s2', 'dandadan-tv']);
+  const [reminders, setReminders] = useState<string[]>(['solo-leveling', 'one-piece']);
   const [comments, setComments] = useState<CommentItem[]>(INITIAL_COMMENTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [friends, setFriends] = useState<FriendUser[]>(INITIAL_FRIENDS);
   const [user, setUser] = useState<UserProfile>(DEFAULT_USER_PROFILE);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [playlists, setPlaylists] = useState<Playlist[]>(DEFAULT_USER_PROFILE.playlists);
   const [userRatings, setUserRatings] = useState<Record<string, number>>({
-    'solo-leveling-s2': 5,
-    'frieren-beyond': 5,
+    'solo-leveling': 5,
+    'demon-slayer': 5,
+    'frieren': 5,
   });
 
   useEffect(() => {
     (async () => {
       try {
-        const [favRaw, cwRaw, watchedRaw, dlRaw, remRaw, setRaw, usrRaw, ratRaw] = await Promise.all([
+        const [favRaw, cwRaw, watchedRaw, dlRaw, remRaw, setRaw, usrRaw, ratRaw, plRaw] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.FAVORITES),
           AsyncStorage.getItem(STORAGE_KEYS.CONTINUE_WATCHING),
           AsyncStorage.getItem(STORAGE_KEYS.WATCHED_EPISODES),
@@ -152,6 +164,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           AsyncStorage.getItem(STORAGE_KEYS.SETTINGS),
           AsyncStorage.getItem(STORAGE_KEYS.USER),
           AsyncStorage.getItem(STORAGE_KEYS.RATINGS),
+          AsyncStorage.getItem(STORAGE_KEYS.PLAYLISTS),
         ]);
         if (favRaw) setFavorites(JSON.parse(favRaw));
         if (cwRaw) setContinueWatching(JSON.parse(cwRaw));
@@ -161,6 +174,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (setRaw) setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(setRaw) });
         if (usrRaw) setUser(JSON.parse(usrRaw));
         if (ratRaw) setUserRatings(JSON.parse(ratRaw));
+        if (plRaw) setPlaylists(JSON.parse(plRaw));
       } catch {
         // Keep initial defaults if storage is empty
       }
@@ -359,9 +373,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const reportComment = (_commentId: string, _reason: string) => {
-    // Handled silently / UI confirmation shown in player
-  };
+  const reportComment = (_commentId: string, _reason: string) => {};
 
   const markNotificationRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
@@ -396,6 +408,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFriends((prev) => [newFriend, ...prev]);
   };
 
+  // Playlists Management
+  const createPlaylist = (name: string, description: string) => {
+    const newPl: Playlist = {
+      id: `pl-${Date.now()}`,
+      name: name.trim() || 'Minha Playlist',
+      description: description.trim() || 'Lista personalizada de animes',
+      mediaIds: [],
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+    setPlaylists((prev) => {
+      const next = [newPl, ...prev];
+      AsyncStorage.setItem(STORAGE_KEYS.PLAYLISTS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+
+  const deletePlaylist = (playlistId: string) => {
+    setPlaylists((prev) => {
+      const next = prev.filter((p) => p.id !== playlistId);
+      AsyncStorage.setItem(STORAGE_KEYS.PLAYLISTS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+
+  const addMediaToPlaylist = (playlistId: string, mediaId: string) => {
+    setPlaylists((prev) => {
+      const next = prev.map((p) => {
+        if (p.id !== playlistId) return p;
+        if (p.mediaIds.includes(mediaId)) return p;
+        return {
+          ...p,
+          mediaIds: [mediaId, ...p.mediaIds],
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+      });
+      AsyncStorage.setItem(STORAGE_KEYS.PLAYLISTS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+
+  const removeMediaFromPlaylist = (playlistId: string, mediaId: string) => {
+    setPlaylists((prev) => {
+      const next = prev.map((p) => {
+        if (p.id !== playlistId) return p;
+        return {
+          ...p,
+          mediaIds: p.mediaIds.filter((id) => id !== mediaId),
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+      });
+      AsyncStorage.setItem(STORAGE_KEYS.PLAYLISTS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+
   const updateUserProfile = (patch: Partial<UserProfile>) => {
     setUser((prev) => {
       const next = { ...prev, ...patch };
@@ -407,15 +475,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const signInWithGoogle = () => {
     updateUserProfile({
       isGuest: false,
-      displayName: 'Otaku Shinokai',
-      username: 'shinokai_viewer',
-      email: 'viewer@shinokai.app',
+      isGoogleLinked: true,
+      googleEmail: 'gianprivadobr@gmail.com',
+      displayName: 'Gian (Google)',
+      username: 'gian_shinokai',
+      lastSyncedAt: 'Agora mesmo',
     });
+  };
+
+  const syncWithGoogle = async (): Promise<boolean> => {
+    // Save snapshot of all user state
+    const cloudPayload = {
+      user,
+      favorites,
+      playlists,
+      settings,
+      continueWatching,
+      watchedEpisodes,
+      userRatings,
+      syncedAt: new Date().toISOString(),
+    };
+    await AsyncStorage.setItem('@shinokai/cloud_backup', JSON.stringify(cloudPayload));
+    updateUserProfile({ lastSyncedAt: 'Agora mesmo' });
+    return true;
   };
 
   const signInAnonymously = () => {
     updateUserProfile({
       isGuest: true,
+      isGoogleLinked: false,
       displayName: 'Visitante Anônimo',
       username: 'guest_shinokai',
       email: undefined,
@@ -450,8 +538,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getEpisodeById = (episodeId: string) => {
     for (const media of medias) {
-      const episode = media.episodes.find((ep) => ep.id === episodeId);
-      if (episode) return { media, episode };
+      const ep =
+        media.episodes.find((e) => e.id === episodeId) ||
+        media.movies?.find((m) => m.id === episodeId);
+      if (ep) return { media, episode: ep };
     }
     return undefined;
   };
@@ -477,6 +567,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         user,
         settings,
         userRatings,
+        playlists,
         unreadNotificationsCount,
         toggleFavorite,
         isFavorite,
@@ -498,9 +589,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         acceptFriendRequest,
         removeFriendOrRequest,
         sendFriendRequest,
+        createPlaylist,
+        deletePlaylist,
+        addMediaToPlaylist,
+        removeMediaFromPlaylist,
         updateUserProfile,
         signInWithGoogle,
         signInAnonymously,
+        syncWithGoogle,
         signOut,
         connectTvWithCode,
         disconnectTv,

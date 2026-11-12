@@ -3,10 +3,18 @@ export type MediaStatus = 'RELEASING' | 'FINISHED' | 'UPCOMING';
 export type AudioLanguage = 'LEGENDADO' | 'DUBLADO' | 'DUAL_AUDIO';
 export type DownloadQuality = '1080p' | '720p' | '480p';
 
+export interface StreamServer {
+  id: string;
+  name: string;
+  url: string;
+  type: 'MP4' | 'HLS' | 'EMBED';
+  quality: string;
+}
+
 export interface Episode {
   id: string;
   mediaId: string;
-  seasonNumber: number;
+  seasonNumber: number; // 1, 2, 3... or 0 for Movies/OVAs
   number: number;
   title: string;
   synopsis: string;
@@ -16,6 +24,8 @@ export interface Episode {
   introEndSec?: number;
   releaseDate: string;
   streamUrl: string;
+  servers?: StreamServer[];
+  isMovie?: boolean;
   audioTracks: { id: string; label: string; language: string }[];
   subtitleTracks: { id: string; label: string; language: string }[];
   likesCount: number;
@@ -38,8 +48,9 @@ export interface Media {
   studio: string;
   genres: string[];
   totalEpisodes: number;
-  seasons: number[];
+  seasons: number[]; // e.g. [1, 2, 3]
   episodes: Episode[];
+  movies?: Episode[]; // Consolidated movies/OVAs for this anime
 }
 
 export interface ContinueWatchingItem {
@@ -88,7 +99,7 @@ export interface DownloadItem {
   thumbnail: string;
   quality: DownloadQuality;
   sizeMb: number;
-  progress: number; // 0 to 100
+  progress: number;
   status: 'DOWNLOADING' | 'COMPLETED' | 'PAUSED' | 'ERROR';
   localUri: string;
   downloadedAt: string;
@@ -115,6 +126,16 @@ export interface FriendUser {
   relation: 'FRIEND' | 'PENDING_RECEIVED' | 'PENDING_SENT' | 'NONE';
 }
 
+export interface Playlist {
+  id: string;
+  name: string;
+  description: string;
+  coverUrl?: string;
+  mediaIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UserProfile {
   id: string;
   username: string;
@@ -123,10 +144,14 @@ export interface UserProfile {
   avatarUrl: string;
   bannerUrl: string;
   isGuest: boolean;
+  isGoogleLinked: boolean;
+  googleEmail?: string;
+  lastSyncedAt?: string;
   episodesWatched: number;
   hoursWatched: number;
   completedAnimes: number;
   connectedTvName?: string;
+  playlists: Playlist[];
 }
 
 export interface AppSettings {
@@ -138,6 +163,7 @@ export interface AppSettings {
   pushNotifications: boolean;
   episodeReleaseAlerts: boolean;
   commentReplyAlerts: boolean;
+  cloudSyncEnabled: boolean;
 }
 
 export interface SearchFilters {
@@ -146,5 +172,6 @@ export interface SearchFilters {
   format: MediaFormat | null;
   status: MediaStatus | null;
   audioType: AudioLanguage | null;
+  releaseYear: number | null;
   sortBy: 'POPULAR' | 'RATING' | 'RECENT' | 'AZ';
 }

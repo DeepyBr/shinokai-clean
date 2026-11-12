@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  FlatList,
   Image,
   ImageBackground,
   Modal,
@@ -16,7 +18,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../src/context/AppContext';
 import { Colors, Fonts } from '../../src/theme/colors';
-import { DownloadQuality } from '../../src/types';
+import { DownloadQuality, Playlist } from '../../src/types';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -26,9 +28,15 @@ export default function ProfileScreen() {
     favorites,
     friends,
     settings,
+    playlists,
+    medias,
+    getMediaById,
+    createPlaylist,
+    deletePlaylist,
     updateSettings,
     updateUserProfile,
     signInWithGoogle,
+    syncWithGoogle,
     signOut,
     disconnectTv,
     acceptFriendRequest,
@@ -44,6 +52,16 @@ export default function ProfileScreen() {
   const [friendSearchInput, setFriendSearchInput] = useState('');
   const [adultModal, setAdultModal] = useState(false);
 
+  // Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  // Playlist management
+  const [createPlModal, setCreatePlModal] = useState(false);
+  const [newPlTitle, setNewPlTitle] = useState('');
+  const [newPlDesc, setNewPlDesc] = useState('');
+  const [viewingPlaylist, setViewingPlaylist] = useState<Playlist | null>(null);
+
   const saveProfile = () => {
     if (nameInput.trim()) {
       updateUserProfile({
@@ -52,6 +70,30 @@ export default function ProfileScreen() {
       });
     }
     setEditModal(false);
+  };
+
+  const handleSyncCloud = async () => {
+    setIsSyncing(true);
+    setSyncFeedback(null);
+    try {
+      await syncWithGoogle();
+      setSyncFeedback('Playlists, histórico e configurações salvos na nuvem!');
+      setTimeout(() => setSyncFeedback(null), 4000);
+    } catch {
+      setSyncFeedback('Erro ao sincronizar. Tente novamente.');
+      setTimeout(() => setSyncFeedback(null), 3000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleCreatePlaylist = () => {
+    if (newPlTitle.trim()) {
+      createPlaylist(newPlTitle.trim(), newPlDesc.trim() || 'Minha coleção personalizada');
+      setNewPlTitle('');
+      setNewPlDesc('');
+      setCreatePlModal(false);
+    }
   };
 
   const handleToggleAdult = (nextVal: boolean) => {
@@ -87,10 +129,10 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
-          {/* Stats Row (Zero economy/gamification — only pure anime stats) */}
+          {/* Pure anime stats */}
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>{ user.episodesWatched + watchedEpisodes.length }</Text>
+              <Text style={styles.statValue}>{user.episodesWatched + watchedEpisodes.length}</Text>
               <Text style={styles.statLabel}>Episódios</Text>
             </View>
             <View style={styles.statCard}>
@@ -101,7 +143,129 @@ export default function ProfileScreen() {
               <Text style={styles.statValue}>{favorites.length}</Text>
               <Text style={styles.statLabel}>Na Lista</Text>
             </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{playlists.length}</Text>
+              <Text style={styles.statLabel}>Playlists</Text>
+            </View>
           </View>
+        </View>
+
+        {/* Google Account & Cloud Sync Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Conta Google & Backup na Nuvem</Text>
+          <View style={styles.cloudCard}>
+            <View style={styles.cloudTopRow}>
+              <View style={styles.googleIconCircle}>
+                <Ionicons name="logo-google" size={20} color="#EA4335" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.cloudBadgeRow}>
+                  <Text style={styles.cloudTitle}>
+                    {user.isGoogleLinked || !user.isGuest
+                      ? 'Conta Google Conectada'
+                      : 'Conta Visitante'}
+                  </Text>
+                  <View style={styles.activeSyncBadge}>
+                    <Text style={styles.activeSyncBadgeText}>Nuvem Ativa</Text>
+                  </View>
+                </View>
+                <Text style={styles.cloudEmail}>
+                  {user.googleEmail || (user.isGuest ? 'Sincronização local' : 'gianprivadobr@gmail.com')}
+                </Text>
+                <Text style={styles.cloudDesc}>
+                  Playlists, progresso de vídeo, histórico e preferências salvos na nuvem.
+                </Text>
+              </View>
+            </View>
+
+            {syncFeedback && (
+              <View style={styles.feedbackBanner}>
+                <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                <Text style={styles.feedbackBannerText}>{syncFeedback}</Text>
+              </View>
+            )}
+
+            <View style={styles.cloudActionRow}>
+              {user.isGuest ? (
+                <Pressable style={styles.syncBtn} onPress={signInWithGoogle}>
+                  <Ionicons name="logo-google" size={16} color={Colors.text} />
+                  <Text style={styles.syncBtnText}>Conectar com Google</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={[styles.syncBtn, isSyncing && { opacity: 0.7 }]}
+                  onPress={handleSyncCloud}
+                  disabled={isSyncing}
+                >
+                  {isSyncing ? (
+                    <ActivityIndicator size="small" color={Colors.text} />
+                  ) : (
+                    <Ionicons name="cloud-upload-outline" size={16} color={Colors.text} />
+                  )}
+                  <Text style={styles.syncBtnText}>
+                    {isSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}
+                  </Text>
+                </Pressable>
+              )}
+
+              <View style={styles.syncStatusRight}>
+                <Ionicons name="shield-checkmark-outline" size={15} color={Colors.primaryAccent} />
+                <Text style={styles.syncStatusText}>Backup Seguro</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Playlists Management Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Minhas Playlists ({playlists.length})</Text>
+            <Pressable
+              style={styles.addPlaylistBtn}
+              onPress={() => setCreatePlModal(true)}
+            >
+              <Ionicons name="add" size={16} color={Colors.text} />
+              <Text style={styles.addPlaylistBtnText}>Nova Playlist</Text>
+            </Pressable>
+          </View>
+
+          {playlists.map((pl) => {
+            const previewMedia = pl.mediaIds.length > 0 ? getMediaById(pl.mediaIds[0]) : null;
+            return (
+              <Pressable
+                key={pl.id}
+                style={styles.playlistCard}
+                onPress={() => setViewingPlaylist(pl)}
+              >
+                <View style={styles.playlistThumb}>
+                  {previewMedia ? (
+                    <Image source={{ uri: previewMedia.posterUrl }} style={styles.thumbImage} />
+                  ) : (
+                    <Ionicons name="folder-outline" size={28} color={Colors.primaryAccent} />
+                  )}
+                </View>
+                <View style={styles.playlistInfo}>
+                  <Text style={styles.playlistTitle}>{pl.name}</Text>
+                  <Text style={styles.playlistDesc} numberOfLines={1}>
+                    {pl.description || 'Playlist de animes'}
+                  </Text>
+                  <Text style={styles.playlistMeta}>
+                    {pl.mediaIds.length} {pl.mediaIds.length === 1 ? 'anime salvo' : 'animes salvos'}
+                  </Text>
+                </View>
+                <Pressable
+                  style={styles.playlistDeleteBtn}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    deletePlaylist(pl.id);
+                  }}
+                  hitSlop={8}
+                >
+                  <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+                </Pressable>
+              </Pressable>
+            );
+          })}
         </View>
 
         {/* Smart TV Connection Card */}
@@ -177,7 +341,22 @@ export default function ProfileScreen() {
 
         {/* Playback Settings */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Reprodução e Downloads</Text>
+          <Text style={styles.sectionTitle}>Configurações de Reprodução & Nuvem</Text>
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingTitle}>Sincronização em Nuvem Automática</Text>
+              <Text style={styles.settingSub}>
+                Fazer backup contínuo com sua conta Google
+              </Text>
+            </View>
+            <Switch
+              value={settings.cloudSyncEnabled}
+              onValueChange={(v) => updateSettings({ cloudSyncEnabled: v })}
+              trackColor={{ false: Colors.surfaceCard, true: Colors.primary }}
+              thumbColor={Colors.text}
+            />
+          </View>
 
           <View style={styles.settingRow}>
             <View style={{ flex: 1 }}>
@@ -232,11 +411,6 @@ export default function ProfileScreen() {
               ))}
             </View>
           </View>
-        </View>
-
-        {/* Notifications & Content Filter */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notificações e Conteúdo</Text>
 
           <View style={styles.settingRow}>
             <View style={{ flex: 1 }}>
@@ -265,7 +439,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Account Section */}
+        {/* Account Sign Out / Connect */}
         <View style={styles.section}>
           {user.isGuest ? (
             <Pressable style={styles.googleBtn} onPress={signInWithGoogle}>
@@ -313,6 +487,112 @@ export default function ProfileScreen() {
                 <Text style={styles.saveBtnText}>Salvar</Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Create Playlist Modal */}
+      <Modal
+        visible={createPlModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCreatePlModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Criar Nova Playlist</Text>
+              <Pressable onPress={() => setCreatePlModal(false)}>
+                <Ionicons name="close" size={22} color={Colors.text} />
+              </Pressable>
+            </View>
+            <Text style={styles.inputLabel}>Nome da Playlist</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Ex: Favoritos de Ação, Melhores Isekai..."
+              placeholderTextColor={Colors.textMuted}
+              value={newPlTitle}
+              onChangeText={setNewPlTitle}
+            />
+            <Text style={styles.inputLabel}>Descrição (opcional)</Text>
+            <TextInput
+              style={[styles.modalInput, { height: 70, textAlignVertical: 'top' }]}
+              placeholder="Breve descrição da sua coleção..."
+              placeholderTextColor={Colors.textMuted}
+              multiline
+              value={newPlDesc}
+              onChangeText={setNewPlDesc}
+            />
+            <View style={styles.modalActions}>
+              <Pressable style={styles.cancelBtn} onPress={() => setCreatePlModal(false)}>
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.saveBtn, !newPlTitle.trim() && { opacity: 0.5 }]}
+                disabled={!newPlTitle.trim()}
+                onPress={handleCreatePlaylist}
+              >
+                <Text style={styles.saveBtnText}>Criar Playlist</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Viewing Playlist Modal */}
+      <Modal
+        visible={!!viewingPlaylist}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setViewingPlaylist(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { maxHeight: '80%' }]}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>{viewingPlaylist?.name}</Text>
+                <Text style={styles.modalSub}>{viewingPlaylist?.description}</Text>
+              </View>
+              <Pressable onPress={() => setViewingPlaylist(null)}>
+                <Ionicons name="close" size={22} color={Colors.text} />
+              </Pressable>
+            </View>
+
+            {viewingPlaylist && viewingPlaylist.mediaIds.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+                <Ionicons name="folder-open-outline" size={44} color={Colors.textMuted} />
+                <Text style={styles.emptyTitle}>Esta playlist está vazia</Text>
+                <Text style={styles.emptySub}>
+                  Abra a página de qualquer anime e toque em &quot;Playlists&quot; para salvá-lo aqui.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView style={{ marginTop: 10 }}>
+                {viewingPlaylist?.mediaIds.map((mId) => {
+                  const anime = getMediaById(mId);
+                  if (!anime) return null;
+                  return (
+                    <Pressable
+                      key={mId}
+                      style={styles.playlistAnimeRow}
+                      onPress={() => {
+                        setViewingPlaylist(null);
+                        router.push(`/media/${anime.id}`);
+                      }}
+                    >
+                      <Image source={{ uri: anime.posterUrl }} style={styles.playlistAnimePoster} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.playlistAnimeTitle}>{anime.title}</Text>
+                        <Text style={styles.playlistAnimeSub}>
+                          {anime.releaseYear} • {anime.studio} • {anime.rating.toFixed(1)} ★
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -381,7 +661,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* AdultContentModal */}
+      {/* Adult Content Warning Modal */}
       <Modal
         visible={adultModal}
         transparent
@@ -478,7 +758,7 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     marginTop: 16,
   },
   statCard: {
@@ -492,7 +772,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: Colors.text,
-    fontSize: 18,
+    fontSize: 17,
     fontFamily: Fonts.bold,
   },
   statLabel: {
@@ -517,33 +797,216 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     marginBottom: 10,
   },
-  linkText: {
+  cloudCard: {
+    backgroundColor: Colors.surfaceCard,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  cloudTopRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  googleIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cloudBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cloudTitle: {
+    color: Colors.text,
+    fontSize: 15,
+    fontFamily: Fonts.bold,
+  },
+  activeSyncBadge: {
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  activeSyncBadgeText: {
+    color: Colors.success,
+    fontSize: 10,
+    fontFamily: Fonts.bold,
+  },
+  cloudEmail: {
     color: Colors.primaryAccent,
     fontSize: 13,
     fontFamily: Fonts.semiBold,
+    marginTop: 2,
+  },
+  cloudDesc: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontFamily: Fonts.regular,
+    marginTop: 6,
+    lineHeight: 16,
+  },
+  feedbackBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  feedbackBannerText: {
+    color: Colors.success,
+    fontSize: 12,
+    fontFamily: Fonts.medium,
+    flex: 1,
+  },
+  cloudActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.surfaceMuted,
+  },
+  syncBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  syncBtnText: {
+    color: Colors.text,
+    fontSize: 13,
+    fontFamily: Fonts.bold,
+  },
+  syncStatusRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  syncStatusText: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontFamily: Fonts.medium,
+  },
+  addPlaylistBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.surfaceElevated,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  addPlaylistBtnText: {
+    color: Colors.text,
+    fontSize: 12,
+    fontFamily: Fonts.semiBold,
+  },
+  playlistCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceCard,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  playlistThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  thumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  playlistInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  playlistTitle: {
+    color: Colors.text,
+    fontSize: 14,
+    fontFamily: Fonts.bold,
+  },
+  playlistDesc: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontFamily: Fonts.regular,
+    marginTop: 2,
+  },
+  playlistMeta: {
+    color: Colors.primaryAccent,
+    fontSize: 11,
+    fontFamily: Fonts.medium,
+    marginTop: 2,
+  },
+  playlistDeleteBtn: {
+    padding: 8,
+  },
+  playlistAnimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceMuted,
+    gap: 12,
+  },
+  playlistAnimePoster: {
+    width: 44,
+    height: 60,
+    borderRadius: 6,
+    backgroundColor: Colors.surfaceElevated,
+  },
+  playlistAnimeTitle: {
+    color: Colors.text,
+    fontSize: 14,
+    fontFamily: Fonts.semiBold,
+  },
+  playlistAnimeSub: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    fontFamily: Fonts.regular,
+    marginTop: 3,
   },
   tvCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
+    backgroundColor: Colors.surfaceCard,
+    borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: Colors.surfaceMuted,
+    borderColor: Colors.border,
     gap: 12,
   },
   tvIconWrap: {
     width: 44,
     height: 44,
-    borderRadius: 12,
-    backgroundColor: Colors.primarySoft,
+    borderRadius: 10,
+    backgroundColor: Colors.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tvTitle: {
     color: Colors.text,
     fontSize: 14,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.semiBold,
   },
   tvSub: {
     color: Colors.textMuted,
@@ -554,11 +1017,11 @@ const styles = StyleSheet.create({
   tvConnectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     backgroundColor: Colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 9,
+    borderRadius: 8,
   },
   tvConnectText: {
     color: Colors.text,
@@ -566,9 +1029,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
   },
   tvDisconnectBtn: {
-    backgroundColor: Colors.surfaceCard,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    backgroundColor: Colors.surfaceElevated,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 8,
   },
   tvDisconnectText: {
@@ -579,9 +1042,9 @@ const styles = StyleSheet.create({
   friendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    padding: 10,
+    backgroundColor: Colors.surfaceCard,
     borderRadius: 12,
+    padding: 10,
     marginBottom: 8,
     gap: 10,
   },
@@ -589,7 +1052,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: Colors.surfaceCard,
+    backgroundColor: Colors.surfaceElevated,
   },
   friendNameRow: {
     flexDirection: 'row',
@@ -608,33 +1071,35 @@ const styles = StyleSheet.create({
   },
   friendWatching: {
     color: Colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: Fonts.regular,
     marginTop: 2,
   },
   acceptBtn: {
     backgroundColor: Colors.primary,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 7,
+    borderRadius: 8,
   },
   acceptBtnText: {
     color: Colors.text,
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: Fonts.bold,
   },
   removeFriendBtn: {
-    padding: 6,
+    padding: 8,
+  },
+  linkText: {
+    color: Colors.primaryAccent,
+    fontSize: 13,
+    fontFamily: Fonts.medium,
   },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.surface,
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 8,
-    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceMuted,
   },
   settingTitle: {
     color: Colors.text,
@@ -652,18 +1117,21 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   qPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
     backgroundColor: Colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   qPillActive: {
     backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   qPillText: {
     color: Colors.textMuted,
     fontSize: 11,
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.medium,
   },
   qPillTextActive: {
     color: Colors.text,
@@ -673,9 +1141,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.primary,
-    paddingVertical: 13,
+    gap: 10,
+    backgroundColor: Colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: 14,
     borderRadius: 12,
   },
   googleBtnText: {
@@ -688,16 +1158,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.surface,
-    paddingVertical: 13,
-    borderRadius: 12,
+    backgroundColor: 'rgba(235, 77, 75, 0.1)',
     borderWidth: 1,
-    borderColor: Colors.surfaceMuted,
+    borderColor: 'rgba(235, 77, 75, 0.3)',
+    paddingVertical: 14,
+    borderRadius: 12,
   },
   logoutBtnText: {
     color: Colors.danger,
     fontSize: 14,
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.bold,
   },
   modalBackdrop: {
     flex: 1,
@@ -707,46 +1177,82 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     backgroundColor: Colors.surfaceElevated,
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 20,
   },
   modalHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    marginBottom: 10,
   },
   modalTitle: {
     color: Colors.text,
-    fontSize: 17,
+    fontSize: 18,
     fontFamily: Fonts.bold,
+  },
+  modalSub: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontFamily: Fonts.regular,
+    marginTop: 2,
   },
   inputLabel: {
     color: Colors.textSecondary,
     fontSize: 12,
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.semiBold,
     marginTop: 12,
     marginBottom: 6,
   },
   modalInput: {
     backgroundColor: Colors.surfaceCard,
-    borderRadius: 10,
+    borderRadius: 8,
     paddingHorizontal: 12,
-    height: 44,
+    paddingVertical: 10,
     color: Colors.text,
+    fontSize: 14,
     fontFamily: Fonts.regular,
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 20,
+  },
+  cancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceCard,
+  },
+  cancelBtnText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    fontFamily: Fonts.semiBold,
+  },
+  saveBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: Colors.primary,
+  },
+  saveBtnText: {
+    color: Colors.text,
+    fontSize: 13,
+    fontFamily: Fonts.bold,
+  },
   addFriendRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 12,
+    marginTop: 10,
   },
   addFriendBtn: {
+    backgroundColor: Colors.primary,
     width: 44,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: Colors.primary,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -754,36 +1260,21 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 13,
     fontFamily: Fonts.regular,
+    lineHeight: 18,
     marginTop: 10,
-    lineHeight: 19,
   },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 20,
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 10,
-    backgroundColor: Colors.surfaceCard,
-    alignItems: 'center',
-  },
-  cancelBtnText: {
+  emptyTitle: {
     color: Colors.text,
-    fontSize: 13,
-    fontFamily: Fonts.semiBold,
-  },
-  saveBtn: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 10,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-  },
-  saveBtnText: {
-    color: Colors.text,
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: Fonts.bold,
+    marginTop: 10,
+  },
+  emptySub: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontFamily: Fonts.regular,
+    marginTop: 4,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 });

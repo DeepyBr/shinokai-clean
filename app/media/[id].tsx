@@ -9,6 +9,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,15 +35,25 @@ export default function MediaDetailScreen() {
     startDownload,
     userRatings,
     rateMedia,
+    playlists,
+    createPlaylist,
+    addMediaToPlaylist,
+    removeMediaFromPlaylist,
   } = useApp();
 
   const media = getMediaById(id || '') || medias[0];
-  const [selectedSeason, setSelectedSeason] = useState<number>(media?.seasons[0] || 1);
+  const [selectedSeason, setSelectedSeason] = useState<number | 'MOVIES'>(media?.seasons[0] || 1);
   const [sortDesc, setSortDesc] = useState(false);
   const [coverModal, setCoverModal] = useState(false);
   const [downloadTargetEp, setDownloadTargetEp] = useState<Episode | null>(null);
+  const [playlistModal, setPlaylistModal] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
 
   const seasonEpisodes = useMemo(() => {
+    if (selectedSeason === 'MOVIES') {
+      const list = media.movies || [];
+      return sortDesc ? [...list].reverse() : list;
+    }
     const list = media.episodes.filter((ep) => ep.seasonNumber === selectedSeason);
     const base = list.length > 0 ? list : media.episodes;
     return sortDesc ? [...base].reverse() : base;
@@ -145,8 +156,16 @@ export default function MediaDetailScreen() {
                 color={hasReminder(media.id) ? Colors.primaryAccent : Colors.text}
               />
               <Text style={styles.quickActionLabel}>
-                {hasReminder(media.id) ? 'Lembrete Ativo' : 'Lembrar-me'}
+                {hasReminder(media.id) ? 'Lembrete' : 'Lembrar'}
               </Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.quickActionItem}
+              onPress={() => setPlaylistModal(true)}
+            >
+              <Ionicons name="folder-outline" size={22} color={Colors.text} />
+              <Text style={styles.quickActionLabel}>Playlists</Text>
             </Pressable>
 
             <Pressable style={styles.quickActionItem} onPress={handleShare}>
@@ -188,9 +207,13 @@ export default function MediaDetailScreen() {
           </View>
         </View>
 
-        {/* Season Selector & Episodes Header */}
+        {/* Season & Movies Selector Header */}
         <View style={styles.episodesHeader}>
-          <View style={styles.seasonTabs}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.seasonTabs}
+          >
             {media.seasons.map((s) => {
               const active = selectedSeason === s;
               return (
@@ -205,11 +228,27 @@ export default function MediaDetailScreen() {
                 </Pressable>
               );
             })}
-          </View>
+
+            {media.movies && media.movies.length > 0 && (
+              <Pressable
+                style={[styles.seasonBtn, selectedSeason === 'MOVIES' && styles.seasonBtnActive]}
+                onPress={() => setSelectedSeason('MOVIES')}
+              >
+                <Text
+                  style={[
+                    styles.seasonBtnText,
+                    selectedSeason === 'MOVIES' && styles.seasonBtnTextActive,
+                  ]}
+                >
+                  🎬 Filmes ({media.movies.length})
+                </Text>
+              </Pressable>
+            )}
+          </ScrollView>
 
           <Pressable style={styles.sortBtn} onPress={() => setSortDesc((v) => !v)}>
             <Ionicons name="swap-vertical" size={16} color={Colors.textSecondary} />
-            <Text style={styles.sortBtnText}>{sortDesc ? 'Recentes' : 'Episódio 1+'}</Text>
+            <Text style={styles.sortBtnText}>{sortDesc ? 'Recentes' : 'Ordem'}</Text>
           </Pressable>
         </View>
 
@@ -238,10 +277,10 @@ export default function MediaDetailScreen() {
 
                 <View style={styles.epInfo}>
                   <Text style={styles.epTitle} numberOfLines={1}>
-                    {ep.number}. {ep.title}
+                    {ep.isMovie ? '🎬 ' : `${ep.number}. `}{ep.title}
                   </Text>
                   <Text style={styles.epDuration}>
-                    {Math.round(ep.durationSec / 60)} min • Dub / Leg
+                    {Math.round(ep.durationSec / 60)} min • {ep.isMovie ? 'Filme / Especial' : 'Dub / Leg'}
                   </Text>
                   <Text style={styles.epDesc} numberOfLines={2}>
                     {ep.synopsis}
@@ -299,6 +338,94 @@ export default function MediaDetailScreen() {
             style={styles.coverFullImage}
             resizeMode="contain"
           />
+        </Pressable>
+      </Modal>
+
+      {/* PlaylistManagementBottomSheet */}
+      <Modal
+        visible={playlistModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPlaylistModal(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setPlaylistModal(false)}>
+          <View style={styles.modalSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHeaderRow}>
+              <View>
+                <Text style={styles.modalTitle}>Salvar em Playlist</Text>
+                <Text style={styles.modalSub}>
+                  Adicione &quot;{media.title}&quot; a uma ou mais playlists
+                </Text>
+              </View>
+              <Pressable onPress={() => setPlaylistModal(false)}>
+                <Ionicons name="close" size={22} color={Colors.text} />
+              </Pressable>
+            </View>
+
+            {/* Existing Playlists */}
+            <ScrollView style={{ maxHeight: 220, marginBottom: 12 }}>
+              {playlists.map((pl) => {
+                const isInPlaylist = pl.mediaIds.includes(media.id);
+                return (
+                  <Pressable
+                    key={pl.id}
+                    style={styles.playlistRow}
+                    onPress={() => {
+                      if (isInPlaylist) {
+                        removeMediaFromPlaylist(pl.id, media.id);
+                      } else {
+                        addMediaToPlaylist(pl.id, media.id);
+                      }
+                    }}
+                  >
+                    <View style={styles.playlistLeft}>
+                      <Ionicons
+                        name={isInPlaylist ? 'checkbox' : 'square-outline'}
+                        size={22}
+                        color={isInPlaylist ? Colors.primary : Colors.textMuted}
+                      />
+                      <View>
+                        <Text style={styles.playlistName}>{pl.name}</Text>
+                        <Text style={styles.playlistCount}>
+                          {pl.mediaIds.length} {pl.mediaIds.length === 1 ? 'anime' : 'animes'}
+                        </Text>
+                      </View>
+                    </View>
+                    {isInPlaylist && (
+                      <Ionicons name="checkmark" size={18} color={Colors.primary} />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {/* Create New Playlist Inline */}
+            <View style={styles.newPlaylistRow}>
+              <TextInput
+                style={styles.newPlaylistInput}
+                placeholder="Nova playlist (ex: Favoritos da Madrugada)..."
+                placeholderTextColor={Colors.textMuted}
+                value={newPlaylistName}
+                onChangeText={setNewPlaylistName}
+              />
+              <Pressable
+                style={[
+                  styles.newPlaylistBtn,
+                  !newPlaylistName.trim() && { opacity: 0.5 },
+                ]}
+                disabled={!newPlaylistName.trim()}
+                onPress={() => {
+                  if (newPlaylistName.trim()) {
+                    createPlaylist(newPlaylistName.trim(), 'Criada pelo usuário');
+                    setNewPlaylistName('');
+                  }
+                }}
+              >
+                <Ionicons name="add" size={18} color={Colors.text} />
+                <Text style={styles.newPlaylistBtnText}>Criar</Text>
+              </Pressable>
+            </View>
+          </View>
         </Pressable>
       </Modal>
 
@@ -704,5 +831,66 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontSize: 12,
     fontFamily: Fonts.medium,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  playlistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceMuted,
+  },
+  playlistLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  playlistName: {
+    color: Colors.text,
+    fontSize: 14,
+    fontFamily: Fonts.semiBold,
+  },
+  playlistCount: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontFamily: Fonts.regular,
+  },
+  newPlaylistRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  newPlaylistInput: {
+    flex: 1,
+    backgroundColor: Colors.surfaceCard,
+    color: Colors.text,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    fontFamily: Fonts.regular,
+    borderWidth: 1,
+    borderColor: Colors.surfaceMuted,
+  },
+  newPlaylistBtn: {
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  newPlaylistBtnText: {
+    color: Colors.text,
+    fontSize: 13,
+    fontFamily: Fonts.bold,
   },
 });

@@ -4,6 +4,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +19,7 @@ import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../src/context/AppContext';
 import { Colors, Fonts } from '../../src/theme/colors';
+import { StreamServer } from '../../src/types';
 
 const REPORT_REASONS = [
   'Uso de linguagem ou símbolos que promovem discriminação ou violência.',
@@ -25,6 +27,37 @@ const REPORT_REASONS = [
   'Compartilhamento de conteúdo sexualmente explícito ou sugestivo.',
   'Postagem de links ou produtos sem autorização.',
   'Publicação de material que não é adequado para a plataforma.',
+];
+
+const DEFAULT_SERVERS: StreamServer[] = [
+  {
+    id: 'srv-1',
+    name: 'Servidor 1 (Ultra HD Fast CDN)',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    type: 'MP4',
+    quality: '1080p',
+  },
+  {
+    id: 'srv-2',
+    name: 'Servidor 2 (Dublado PT-BR)',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+    type: 'MP4',
+    quality: '720p',
+  },
+  {
+    id: 'srv-3',
+    name: 'Servidor 3 (Legendado HLS)',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+    type: 'MP4',
+    quality: '1080p',
+  },
+  {
+    id: 'srv-4',
+    name: 'Servidor 4 (Alternativo / Backup)',
+    url: 'https://vjs.zencdn.net/v/oceans.mp4',
+    type: 'MP4',
+    quality: '1080p',
+  },
 ];
 
 export default function PlayerScreen() {
@@ -48,15 +81,21 @@ export default function PlayerScreen() {
   };
   const { media, episode } = resolved;
 
+  const availableServers = episode.servers && episode.servers.length > 0 ? episode.servers : DEFAULT_SERVERS;
+  const [currentServer, setCurrentServer] = useState<StreamServer>(availableServers[0]);
+
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const [posSec, setPosSec] = useState(0);
-  const [durSec, setDurSec] = useState(episode.durationSec);
+  const [durSec, setDurSec] = useState(episode.durationSec || 1420);
   const [selectedAudio, setSelectedAudio] = useState(episode.audioTracks[0]?.id || 'jp');
   const [selectedSub, setSelectedSub] = useState(episode.subtitleTracks[0]?.id || 'pt-br');
   const [playbackRate, setPlaybackRate] = useState(1.0);
 
   const [tracksModal, setTracksModal] = useState(false);
+  const [serverModal, setServerModal] = useState(false);
   const [castModal, setCastModal] = useState(false);
   const [nextEpModal, setNextEpModal] = useState(false);
 
@@ -67,9 +106,10 @@ export default function PlayerScreen() {
   const [reportTargetId, setReportTargetId] = useState<string | null>(null);
 
   const nextEpisode = useMemo(() => {
-    const idx = media.episodes.findIndex((e) => e.id === episode.id);
-    if (idx >= 0 && idx + 1 < media.episodes.length) {
-      return media.episodes[idx + 1];
+    const list = media.episodes;
+    const idx = list.findIndex((e) => e.id === episode.id);
+    if (idx >= 0 && idx + 1 < list.length) {
+      return list[idx + 1];
     }
     return null;
   }, [media, episode.id]);
@@ -83,7 +123,14 @@ export default function PlayerScreen() {
   }, [posSec, media, episode]);
 
   const onPlaybackStatusUpdate = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) return;
+    if (!status.isLoaded) {
+      if (status.error) {
+        setHasError(true);
+      }
+      return;
+    }
+    setIsLoaded(true);
+    setHasError(false);
     setIsPlaying(status.isPlaying);
     const currentSec = Math.floor(status.positionMillis / 1000);
     setPosSec(currentSec);
@@ -100,9 +147,7 @@ export default function PlayerScreen() {
     setPosSec(nextPos);
     try {
       await videoRef.current?.setPositionAsync(nextPos * 1000);
-    } catch {
-      // Fallback if video not yet buffered
-    }
+    } catch {}
   };
 
   const skipIntro = async () => {
@@ -128,106 +173,144 @@ export default function PlayerScreen() {
   const openExternalWebVideoCast = async () => {
     setCastModal(false);
     try {
-      await Linking.openURL(episode.streamUrl);
+      await Linking.openURL(currentServer.url);
     } catch {}
+  };
+
+  const switchServer = (srv: StreamServer) => {
+    setCurrentServer(srv);
+    setHasError(false);
+    setIsLoaded(false);
+    setServerModal(false);
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Video Player Surface ( Zero Ads! ) */}
+      {/* Video Player Surface */}
       <View style={styles.playerBox}>
         <Video
           ref={videoRef}
-          source={{ uri: episode.streamUrl }}
+          source={{ uri: currentServer.url }}
           style={styles.video}
           resizeMode={ResizeMode.CONTAIN}
-          shouldPlay
+          shouldPlay={isPlaying}
+          useNativeControls={Platform.OS === 'web'}
           rate={playbackRate}
           onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+          onError={() => setHasError(true)}
         />
 
-        {/* Player Overlay Controls */}
-        <View style={styles.overlay}>
-          {/* Top Bar */}
-          <View style={styles.topBar}>
-            <Pressable style={styles.iconBtn} onPress={() => router.back()}>
-              <Ionicons name="arrow-back" size={20} color={Colors.text} />
-            </Pressable>
-            <View style={{ flex: 1, marginHorizontal: 10 }}>
-              <Text style={styles.topMediaTitle} numberOfLines={1}>
-                {media.title}
-              </Text>
-              <Text style={styles.topEpTitle} numberOfLines={1}>
-                Ep. {episode.number} — {episode.title}
-              </Text>
-            </View>
-            <Pressable style={styles.iconBtn} onPress={() => setCastModal(true)}>
-              <Ionicons name="tv-outline" size={19} color={Colors.text} />
-            </Pressable>
-            <Pressable style={styles.iconBtn} onPress={() => setTracksModal(true)}>
-              <Ionicons name="settings-outline" size={19} color={Colors.text} />
+        {/* Fallback if error / server issue */}
+        {hasError && (
+          <View style={styles.errorOverlay}>
+            <Ionicons name="alert-circle-outline" size={38} color={Colors.warning} />
+            <Text style={styles.errorTitle}>Falha ao carregar este servidor de vídeo</Text>
+            <Text style={styles.errorSub}>Toque abaixo para trocar de servidor de streaming</Text>
+            <Pressable style={styles.switchSrvBtn} onPress={() => setServerModal(true)}>
+              <Text style={styles.switchSrvBtnText}>Trocar Servidor</Text>
             </Pressable>
           </View>
+        )}
 
-          {/* Center Controls */}
-          <View style={styles.centerControls}>
-            <Pressable style={styles.seekBtn} onPress={() => seekBy(-10)}>
-              <Ionicons name="play-back" size={24} color={Colors.text} />
-              <Text style={styles.seekText}>10s</Text>
-            </Pressable>
+        {/* Player Overlay Controls (When not on Web native controls) */}
+        {Platform.OS !== 'web' && (
+          <View style={styles.overlay} pointerEvents="box-none">
+            {/* Top Bar */}
+            <View style={styles.topBar}>
+              <Pressable style={styles.iconBtn} onPress={() => router.back()}>
+                <Ionicons name="arrow-back" size={20} color={Colors.text} />
+              </Pressable>
+              <View style={{ flex: 1, marginHorizontal: 10 }}>
+                <Text style={styles.topMediaTitle} numberOfLines={1}>
+                  {media.title}
+                </Text>
+                <Text style={styles.topEpTitle} numberOfLines={1}>
+                  {episode.isMovie ? 'Filme' : `T${episode.seasonNumber} • Ep. ${episode.number}`} — {episode.title}
+                </Text>
+              </View>
+              <Pressable style={styles.iconBtn} onPress={() => setServerModal(true)}>
+                <Ionicons name="server-outline" size={19} color={Colors.text} />
+              </Pressable>
+              <Pressable style={styles.iconBtn} onPress={() => setCastModal(true)}>
+                <Ionicons name="tv-outline" size={19} color={Colors.text} />
+              </Pressable>
+              <Pressable style={styles.iconBtn} onPress={() => setTracksModal(true)}>
+                <Ionicons name="settings-outline" size={19} color={Colors.text} />
+              </Pressable>
+            </View>
 
-            <Pressable
-              style={styles.playPauseBtn}
-              onPress={async () => {
-                try {
-                  if (isPlaying) {
-                    await videoRef.current?.pauseAsync();
-                  } else {
-                    await videoRef.current?.playAsync();
+            {/* Center Controls */}
+            <View style={styles.centerControls} pointerEvents="box-none">
+              <Pressable style={styles.seekBtn} onPress={() => seekBy(-10)}>
+                <Ionicons name="play-back" size={24} color={Colors.text} />
+                <Text style={styles.seekText}>10s</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.playPauseBtn}
+                onPress={async () => {
+                  try {
+                    if (isPlaying) {
+                      await videoRef.current?.pauseAsync();
+                    } else {
+                      await videoRef.current?.playAsync();
+                    }
+                  } catch {
+                    setIsPlaying((p) => !p);
                   }
-                } catch {
-                  setIsPlaying((p) => !p);
-                }
-              }}
-            >
-              <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color={Colors.text} />
-            </Pressable>
+                }}
+              >
+                <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color={Colors.text} />
+              </Pressable>
 
-            <Pressable style={styles.seekBtn} onPress={() => seekBy(10)}>
-              <Ionicons name="play-forward" size={24} color={Colors.text} />
-              <Text style={styles.seekText}>10s</Text>
-            </Pressable>
-          </View>
-
-          {/* Skip Intro Button */}
-          {(showSkipIntro || posSec < 180) && (
-            <Pressable style={styles.skipIntroBtn} onPress={skipIntro}>
-              <Ionicons name="play-skip-forward" size={15} color={Colors.text} />
-              <Text style={styles.skipIntroText}>Pular Abertura</Text>
-            </Pressable>
-          )}
-
-          {/* Bottom Progress Bar */}
-          <View style={styles.bottomBar}>
-            <Text style={styles.timeText}>{formatTime(posSec)}</Text>
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${Math.min(100, (posSec / durSec) * 100)}%` },
-                ]}
-              />
+              <Pressable style={styles.seekBtn} onPress={() => seekBy(10)}>
+                <Ionicons name="play-forward" size={24} color={Colors.text} />
+                <Text style={styles.seekText}>10s</Text>
+              </Pressable>
             </View>
-            <Text style={styles.timeText}>{formatTime(durSec)}</Text>
+
+            {/* Skip Intro Button */}
+            {(showSkipIntro || (posSec < 180 && !episode.isMovie)) && (
+              <Pressable style={styles.skipIntroBtn} onPress={skipIntro}>
+                <Ionicons name="play-skip-forward" size={15} color={Colors.text} />
+                <Text style={styles.skipIntroText}>Pular Abertura</Text>
+              </Pressable>
+            )}
+
+            {/* Bottom Progress Bar */}
+            <View style={styles.bottomBar}>
+              <Text style={styles.timeText}>{formatTime(posSec)}</Text>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${Math.min(100, (posSec / durSec) * 100)}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.timeText}>{formatTime(durSec)}</Text>
+            </View>
           </View>
+        )}
+      </View>
+
+      {/* Web Player Controls & Quick Server Switch Bar */}
+      <View style={styles.serverQuickBar}>
+        <View style={styles.serverInfo}>
+          <View style={styles.liveGreenDot} />
+          <Text style={styles.currentServerText}>{currentServer.name}</Text>
         </View>
+        <Pressable style={styles.serverChangeBtn} onPress={() => setServerModal(true)}>
+          <Ionicons name="swap-horizontal" size={16} color={Colors.primaryAccent} />
+          <Text style={styles.serverChangeText}>Trocar Servidor</Text>
+        </Pressable>
       </View>
 
       {/* Episode Details, Actions & Comments */}
       <ScrollView contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
         <View style={styles.epMetaSection}>
           <Text style={styles.epFullTitle}>
-            Episódio {episode.number} — {episode.title}
+            {episode.isMovie ? '🎬 Longa-Metragem' : `Temporada ${episode.seasonNumber} • Episódio ${episode.number}`} — {episode.title}
           </Text>
           <Text style={styles.epSynopsis}>{episode.synopsis}</Text>
 
@@ -245,19 +328,24 @@ export default function PlayerScreen() {
               <Text style={styles.epActionText}>Assistir na TV</Text>
             </Pressable>
 
+            <Pressable style={styles.epActionBtn} onPress={() => setTracksModal(true)}>
+              <Ionicons name="options-outline" size={18} color={Colors.text} />
+              <Text style={styles.epActionText}>Áudio / Legenda</Text>
+            </Pressable>
+
             {nextEpisode && (
               <Pressable
                 style={[styles.epActionBtn, styles.nextEpBtn]}
                 onPress={() => router.replace(`/player/${nextEpisode.id}`)}
               >
                 <Ionicons name="play-skip-forward" size={18} color={Colors.text} />
-                <Text style={styles.epActionText}>Ep. {nextEpisode.number}</Text>
+                <Text style={styles.epActionText}>Próximo Ep.</Text>
               </Pressable>
             )}
           </View>
         </View>
 
-        {/* Comments Section (CommentsBottomSheet inline) */}
+        {/* Comments Section */}
         <View style={styles.commentsSection}>
           <Text style={styles.commentsHeader}>
             Comentários do Episódio ({comments.length})
@@ -343,6 +431,44 @@ export default function PlayerScreen() {
         </View>
       </ScrollView>
 
+      {/* Server Selection Modal */}
+      <Modal
+        visible={serverModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setServerModal(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setServerModal(false)}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Selecione o Servidor de Streaming</Text>
+            <Text style={styles.modalSub}>Se o vídeo travar ou não carregar, troque de servidor:</Text>
+            {availableServers.map((srv) => {
+              const active = currentServer.id === srv.id;
+              return (
+                <Pressable
+                  key={srv.id}
+                  style={[styles.castOption, active && styles.serverOptionActive]}
+                  onPress={() => switchServer(srv)}
+                >
+                  <Ionicons
+                    name="server-outline"
+                    size={22}
+                    color={active ? Colors.primary : Colors.textSecondary}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.castOptionTitle, active && { color: Colors.primaryAccent }]}>
+                      {srv.name}
+                    </Text>
+                    <Text style={styles.castOptionSub}>Qualidade: {srv.quality} • Tipo: {srv.type}</Text>
+                  </View>
+                  {active && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Modal>
+
       {/* Audio / Subtitle / Speed Modal (OptionReproductionModal) */}
       <Modal
         visible={tracksModal}
@@ -388,7 +514,7 @@ export default function PlayerScreen() {
               ))}
             </View>
 
-            <Text style={styles.groupLabel}>Velocidade</Text>
+            <Text style={styles.groupLabel}>Velocidade de Reprodução</Text>
             <View style={styles.pillsRow}>
               {[0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
                 <Pressable
@@ -527,13 +653,47 @@ const styles = StyleSheet.create({
   },
   playerBox: {
     width: '100%',
-    height: 245,
+    height: 250,
     backgroundColor: Colors.backgroundDeep,
     position: 'relative',
   },
   video: {
     width: '100%',
     height: '100%',
+  },
+  errorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(5, 10, 15, 0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    zIndex: 10,
+  },
+  errorTitle: {
+    color: Colors.text,
+    fontSize: 14,
+    fontFamily: Fonts.bold,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  errorSub: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontFamily: Fonts.regular,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  switchSrvBtn: {
+    marginTop: 12,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  switchSrvBtnText: {
+    color: Colors.text,
+    fontSize: 13,
+    fontFamily: Fonts.bold,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -624,6 +784,42 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     backgroundColor: Colors.primary,
+  },
+  serverQuickBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceMuted,
+  },
+  serverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveGreenDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.success,
+  },
+  currentServerText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontFamily: Fonts.medium,
+  },
+  serverChangeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  serverChangeText: {
+    color: Colors.primaryAccent,
+    fontSize: 12,
+    fontFamily: Fonts.semiBold,
   },
   bodyContent: {
     padding: 16,
@@ -815,6 +1011,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 12,
   },
+  serverOptionActive: {
+    backgroundColor: 'rgba(226, 18, 33, 0.1)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
   groupLabel: {
     color: Colors.textSecondary,
     fontSize: 13,
@@ -846,7 +1048,6 @@ const styles = StyleSheet.create({
   },
   pillTextActive: {
     color: Colors.text,
-    fontSize: 12,
     fontFamily: Fonts.bold,
   },
   castOption: {
