@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -16,7 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../src/context/AppContext';
 import { Colors, Fonts } from '../../src/theme/colors';
 import { GENRES } from '../../src/api/mockData';
-import { AudioLanguage, MediaStatus } from '../../src/types';
+import { shinokaiApi } from '../../src/api/shinokaiApi';
+import { AudioLanguage, MediaStatus, Media } from '../../src/types';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -32,9 +33,36 @@ export default function SearchScreen() {
   const activeFiltersCount =
     (genre ? 1 : 0) + (status ? 1 : 0) + (audio ? 1 : 0) + (sortBy !== 'POPULAR' ? 1 : 0);
 
+  const [liveResults, setLiveResults] = useState<Media[]>([]);
+  const [isSearchingLive, setIsSearchingLive] = useState(false);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setLiveResults([]);
+      setIsSearchingLive(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingLive(true);
+      try {
+        const found = await shinokaiApi.searchCatalog(q);
+        setLiveResults(found);
+      } catch {
+        // Keep local results
+      } finally {
+        setIsSearchingLive(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtered = medias.filter((m) => {
+    const sourcePool = q && liveResults.length > 0 ? liveResults : medias;
+    const filtered = sourcePool.filter((m) => {
       if (q) {
         const matchesTitle =
           m.title.toLowerCase().includes(q) ||
@@ -57,7 +85,7 @@ export default function SearchScreen() {
       if (sortBy === 'AZ') return a.title.localeCompare(b.title);
       return b.totalEpisodes - a.totalEpisodes;
     });
-  }, [medias, query, genre, status, audio, sortBy]);
+  }, [medias, liveResults, query, genre, status, audio, sortBy]);
 
   const clearFilters = () => {
     setGenre(null);

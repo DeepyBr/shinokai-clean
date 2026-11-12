@@ -8,66 +8,49 @@ import {
   INITIAL_COMMENTS,
   INITIAL_MEDIAS,
 } from './mockData';
-
-export const API_BASE_URL = 'https://api-prod.shinokai.online';
-
-async function safeFetchJson<T>(path: string, options?: RequestInit): Promise<T | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3500);
-  try {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...(options?.headers || {}),
-      },
-      signal: controller.signal,
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+import { anilistApi } from './anilistApi';
 
 export const shinokaiApi = {
   async fetchCatalog(): Promise<Media[]> {
-    const remote = await safeFetchJson<{ items?: Media[] }>('/home');
-    if (remote?.items && Array.isArray(remote.items) && remote.items.length > 0) {
-      return remote.items;
+    try {
+      const live = await anilistApi.fetchLiveCatalog(1, 35);
+      if (live && live.length > 0) {
+        // Merge with initial so all IDs are preserved
+        const liveIds = new Set(live.map((m) => m.id));
+        const merged = [...live, ...INITIAL_MEDIAS.filter((m) => !liveIds.has(m.id))];
+        return merged;
+      }
+    } catch {
+      // Fallback
     }
     return INITIAL_MEDIAS;
   },
 
+  async searchCatalog(query: string): Promise<Media[]> {
+    if (!query.trim()) return [];
+    try {
+      const live = await anilistApi.searchLive(query);
+      if (live && live.length > 0) return live;
+    } catch {}
+    const q = query.toLowerCase();
+    return INITIAL_MEDIAS.filter(
+      (m) =>
+        m.title.toLowerCase().includes(q) ||
+        m.originalTitle.toLowerCase().includes(q) ||
+        m.genres.some((g) => g.toLowerCase().includes(q))
+    );
+  },
+
   async fetchReleaseCalendar(): Promise<CalendarReleaseItem[]> {
-    const remote = await safeFetchJson<{ items?: CalendarReleaseItem[] }>('/release-calendar');
-    if (remote?.items && Array.isArray(remote.items) && remote.items.length > 0) {
-      return remote.items;
-    }
     return INITIAL_CALENDAR;
   },
 
   async fetchEpisodeComments(episodeId: string): Promise<CommentItem[]> {
-    const remote = await safeFetchJson<{ items?: CommentItem[] }>(`/comments?episodeId=${encodeURIComponent(episodeId)}`);
-    if (remote?.items && Array.isArray(remote.items)) {
-      return remote.items;
-    }
     return INITIAL_COMMENTS;
   },
 
-  async claimTvDeviceCode(code: string, token?: string): Promise<{ ok: boolean; deviceName: string }> {
+  async claimTvDeviceCode(code: string): Promise<{ ok: boolean; deviceName: string }> {
     const cleanCode = code.trim().toUpperCase();
-    const remote = await safeFetchJson<{ deviceName?: string }>('/auth/devices/claim', {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      body: JSON.stringify({ code: cleanCode }),
-    });
-    if (remote?.deviceName) {
-      return { ok: true, deviceName: remote.deviceName };
-    }
     return {
       ok: true,
       deviceName: `Smart TV Shinokai (${cleanCode.slice(0, 6)})`,

@@ -52,6 +52,21 @@ export default function HomeScreen() {
     [medias]
   );
 
+  const actionMedias = useMemo(
+    () => medias.filter((m) => m.genres.includes('Ação')),
+    [medias]
+  );
+
+  const fantasyMedias = useMemo(
+    () => medias.filter((m) => m.genres.includes('Fantasia') || m.genres.includes('Aventura')),
+    [medias]
+  );
+
+  const movieMedias = useMemo(
+    () => medias.filter((m) => m.format === 'MOVIE' || m.totalEpisodes === 1),
+    [medias]
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
@@ -257,6 +272,59 @@ export default function HomeScreen() {
             )}
           />
         </View>
+
+        {/* Animes de Ação & Batalhas Épicas */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Ação e Shounen</Text>
+          </View>
+          <FlatList
+            horizontal
+            data={actionMedias}
+            keyExtractor={(item) => `act-${item.id}`}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.horizontalList}
+            renderItem={({ item }) => (
+              <PosterCard media={item} onPress={() => router.push(`/media/${item.id}`)} />
+            )}
+          />
+        </View>
+
+        {/* Fantasia e Isekai */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Fantasia e Aventura</Text>
+          </View>
+          <FlatList
+            horizontal
+            data={fantasyMedias}
+            keyExtractor={(item) => `fan-${item.id}`}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.horizontalList}
+            renderItem={({ item }) => (
+              <PosterCard media={item} onPress={() => router.push(`/media/${item.id}`)} />
+            )}
+          />
+        </View>
+
+        {/* Filmes e Especiais de Anime */}
+        {movieMedias.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Filmes e Longas-Metragens</Text>
+            </View>
+            <FlatList
+              horizontal
+              data={movieMedias}
+              keyExtractor={(item) => `mov-${item.id}`}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+              renderItem={({ item }) => (
+                <PosterCard media={item} onPress={() => router.push(`/media/${item.id}`)} />
+              )}
+            />
+          </View>
+        )}
       </ScrollView>
 
       {/* ContinueWatchingOptionsModal */}
