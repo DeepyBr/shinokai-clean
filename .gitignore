@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+dist/
+web-build/
+.wrangler/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+*.log
+.DS_Store
+.env*.local
