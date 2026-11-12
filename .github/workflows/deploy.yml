@@ -24,9 +24,9 @@ jobs:
       - name: Build Expo Web bundle
         run: npm run build:web
 
-      - name: Publish to Cloudflare Pages
+      - name: Publish to Cloudflare
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: '38383812b120458699dad91d1d0c2908'
-          command: pages deploy dist --project-name=shinokai-clean
+          command: deploy
